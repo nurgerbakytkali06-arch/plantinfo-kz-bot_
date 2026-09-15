@@ -284,9 +284,11 @@ async def start(message: Message):
     await clear_chat(message.bot, message.chat.id)
 
     msg = await message.answer(
-        f"{TEXT['welcome']}\n\nСәлем! Ботқа қош келдіңіз.",
+        "🌿 <b>Сәлеметсіз бе!</b>\n\n"
+        "Өсімдіктер энциклопедиясы ботына қош келдіңіз!\n\n"
+        "Төмендегі негізгі мәзірден қажетті бөлімді таңдаңыз:",
         parse_mode="HTML",
-        reply_markup=START_KEYBOARD,
+        reply_markup=main_menu(),
     )
     remember(message.chat.id, msg.message_id)
 
@@ -295,9 +297,11 @@ async def start(message: Message):
 async def start_button(message: Message):
     await clear_chat(message.bot, message.chat.id)
     msg = await message.answer(
-        f"{TEXT['welcome']}\n\nСәлем! Ботқа қош келдіңіз.",
+        "🌿 <b>Сәлеметсіз бе!</b>\n\n"
+        "Өсімдіктер энциклопедиясы ботына қош келдіңіз!\n\n"
+        "Төмендегі негізгі мәзірден қажетті бөлімді таңдаңыз:",
         parse_mode="HTML",
-        reply_markup=START_KEYBOARD,
+        reply_markup=main_menu(),
     )
     remember(message.chat.id, msg.message_id)
 
