@@ -22,8 +22,8 @@ AUTHOR = os.getenv("BOT_AUTHOR", "ХБ-31").strip()
 PORT = int(os.getenv("PORT", "10000"))
 
 BASE = Path(__file__).resolve().parent
-DATA_FILE = BASE / "data" / "plants_kk.json"
-IMAGE_DIR = BASE / "images"
+DATA_FILE = BASE / "plants_kk.json"
+IMAGE_DIR = BASE
 DB_FILE = BASE / "translations.sqlite3"
 
 if not BOT_TOKEN:
