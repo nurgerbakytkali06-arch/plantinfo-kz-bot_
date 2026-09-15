@@ -89,30 +89,58 @@ def category_menu():
     ])
 
 
-def category_keyboard(category: str):
+def category_keyboard(category: str, page: int = 0):
+    ids = list(CATEGORIES[category])
+    per_page = 10
+    total_pages = max(1, (len(ids) + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+
+    current = ids[page * per_page:(page + 1) * per_page]
     rows = []
-    for pid in CATEGORIES[category]:
-        p = PLANT_BY_ID[pid]
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{pid}. {p['name_kk']}"[:60],
-                callback_data=f"plant:{pid}",
+
+    # Екі баған: экранға ықшам әрі көзге жеңіл.
+    for i in range(0, len(current), 2):
+        row = []
+        for pid in current[i:i + 2]:
+            p = PLANT_BY_ID[pid]
+            row.append(
+                InlineKeyboardButton(
+                    text=f"{pid}. {p['name_kk']}"[:32],
+                    callback_data=f"plant:{pid}",
+                )
             )
-        ])
+        rows.append(row)
+
+    nav = []
+    if page > 0:
+        nav.append(
+            InlineKeyboardButton(text="⬅️ Алдыңғы", callback_data=f"page:{category}:{page-1}")
+        )
+    if page < total_pages - 1:
+        nav.append(
+            InlineKeyboardButton(text="Келесі ➡️", callback_data=f"page:{category}:{page+1}")
+        )
+    if nav:
+        rows.append(nav)
 
     rows.append([
-        InlineKeyboardButton(text=TEXT["back"], callback_data="plants")
+        InlineKeyboardButton(text="🔙 Артқа", callback_data="plants"),
+        InlineKeyboardButton(text=TEXT["menu"], callback_data="menu"),
     ])
+
     rows.append([
-        InlineKeyboardButton(text=TEXT["menu"], callback_data="menu")
+        InlineKeyboardButton(
+            text=f"Бет {page + 1}/{total_pages}",
+            callback_data="noop"
+        )
     ])
+
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 def plant_keyboard(plant_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="🔤 Ғылыми атауы (Латынша атауы)",
+            text="🔤 Ғылыми атауы",
             callback_data=f"latin:{plant_id}"
         )],
         [InlineKeyboardButton(
@@ -123,16 +151,11 @@ def plant_keyboard(plant_id: int):
             text="🌱 Өсімдік сипаттамасы",
             callback_data=f"desc:{plant_id}"
         )],
-        [InlineKeyboardButton(
-            text="🔙 Артқа",
-            callback_data="plants"
-        )],
-        [InlineKeyboardButton(
-            text=TEXT["menu"],
-            callback_data="menu"
-        )],
+        [
+            InlineKeyboardButton(text="🔙 Артқа", callback_data="plants"),
+            InlineKeyboardButton(text=TEXT["menu"], callback_data="menu"),
+        ],
     ])
-
 
 def detail_keyboard(plant_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -148,20 +171,14 @@ def detail_keyboard(plant_id: int):
             text="🌱 Өсімдік сипаттамасы",
             callback_data=f"desc:{plant_id}"
         )],
-        [InlineKeyboardButton(
-            text="🔙 Артқа",
-            callback_data=f"plant:{plant_id}"
-        )],
-        [InlineKeyboardButton(
-            text="🌱 Өсімдіктер",
-            callback_data="plants"
-        )],
-        [InlineKeyboardButton(
-            text=TEXT["menu"],
-            callback_data="menu"
-        )],
+        [
+            InlineKeyboardButton(text="🔙 Артқа", callback_data=f"plant:{plant_id}"),
+            InlineKeyboardButton(text="🌱 Өсімдіктер", callback_data="plants"),
+        ],
+        [
+            InlineKeyboardButton(text=TEXT["menu"], callback_data="menu"),
+        ],
     ])
-
 
 def plant_title(plant_id: int):
     plant = PLANT_BY_ID[plant_id]
@@ -287,8 +304,32 @@ async def cb_category(call: CallbackQuery):
         call.bot,
         call.message.chat.id,
         text,
-        category_keyboard(cat),
+        category_keyboard(cat, 0),
     )
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("page:"))
+async def cb_page(call: CallbackQuery):
+    try:
+        _, category, page_text = call.data.split(":", 2)
+        page = int(page_text)
+    except (ValueError, IndexError):
+        await call.answer()
+        return
+
+    if category not in CATEGORIES:
+        await call.answer()
+        return
+
+    await call.message.edit_reply_markup(
+        reply_markup=category_keyboard(category, page)
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "noop")
+async def cb_noop(call: CallbackQuery):
     await call.answer()
 
 
