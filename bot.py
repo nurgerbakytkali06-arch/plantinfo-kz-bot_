@@ -72,7 +72,8 @@ TEXT = {
 # Пайдаланушы /start жазбай-ақ ботты осы батырмамен қайта бастай алады.
 START_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🌿 Ботты бастау")]
+        [KeyboardButton(text="🌿 Ботты бастау")],
+        [KeyboardButton(text="🛠 Тех. қолдау")]
     ],
     resize_keyboard=True,
     is_persistent=True,
@@ -285,10 +286,8 @@ async def start(message: Message):
     msg = await message.answer(
         f"{TEXT['welcome']}\n\nСәлем! Ботқа қош келдіңіз.",
         parse_mode="HTML",
-        reply_markup=main_menu(),
+        reply_markup=START_KEYBOARD,
     )
-    # Негізгі reply-кнопка чаттың төменгі жағында тұрақты қалады.
-    await message.answer("Ботты қайта бастау үшін төмендегі батырманы басыңыз.", reply_markup=START_KEYBOARD)
     remember(message.chat.id, msg.message_id)
 
 
@@ -298,14 +297,22 @@ async def start_button(message: Message):
     msg = await message.answer(
         f"{TEXT['welcome']}\n\nСәлем! Ботқа қош келдіңіз.",
         parse_mode="HTML",
-        reply_markup=main_menu(),
-    )
-    remember(message.chat.id, msg.message_id)
-    # Reply keyboard-ді қайта көрсетіп қоямыз.
-    await message.answer(
-        "Ботты қайта бастау үшін төмендегі батырманы басыңыз.",
         reply_markup=START_KEYBOARD,
     )
+    remember(message.chat.id, msg.message_id)
+
+
+@dp.message(F.text == "🛠 Тех. қолдау")
+async def technical_support(message: Message):
+    await clear_chat(message.bot, message.chat.id)
+    msg = await message.answer(
+        "🛠 <b>Техникалық қолдау</b>\n\n"
+        "Ботқа қатысты сұрақтар немесе ақаулар бойынша хабарласыңыз:\n"
+        "📞 <b>+7 776 915 6327</b>",
+        parse_mode="HTML",
+        reply_markup=START_KEYBOARD,
+    )
+    remember(message.chat.id, msg.message_id)
 
 
 @dp.callback_query(F.data == "menu")
