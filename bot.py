@@ -105,31 +105,29 @@ def image_for(plant_id: int):
     return matches[0] if matches else None
 
 async def send_plant(bot: Bot, chat_id: int, plant_id: int):
-    text = plant_text(plant_id)
-    parts = list(chunks(text))
-    img = image_for(plant_id)
-
-    if img:
-        await bot.send_photo(
-            chat_id,
-            FSInputFile(img),
-            caption=parts[0][:1024],
-            parse_mode="HTML"
-        )
-        for part in parts[1:]:
-            await bot.send_message(chat_id, part, parse_mode="HTML")
-    else:
-        for part in parts:
-            await bot.send_message(chat_id, part, parse_mode="HTML")
-
+    # Өсімдік ашылғанда сурет көрсетілмейді.
+    # Тек атауы және қажетті төрт батырма көрсетіледі.
     await bot.send_message(
         chat_id,
-        "Қажетті бөлімді таңдаңыз:",
+        plant_text(plant_id),
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔤 Ғылыми атауы (Латынша атауы)", callback_data=f"latin:{plant_id}")],
-            [InlineKeyboardButton(text="🖼 Суретті көру", callback_data=f"image:{plant_id}")],
-            [InlineKeyboardButton(text="🌱 Өсімдік сипаттамасы", callback_data=f"desc:{plant_id}")],
-            [InlineKeyboardButton(text="🔙 Артқа", callback_data="plants")],
+            [InlineKeyboardButton(
+                text="🔤 Ғылыми атауы (Латынша атауы)",
+                callback_data=f"latin:{plant_id}"
+            )],
+            [InlineKeyboardButton(
+                text="🖼 Суретті көру",
+                callback_data=f"image:{plant_id}"
+            )],
+            [InlineKeyboardButton(
+                text="🌱 Өсімдік сипаттамасы",
+                callback_data=f"desc:{plant_id}"
+            )],
+            [InlineKeyboardButton(
+                text="🔙 Артқа",
+                callback_data="plants"
+            )],
         ]),
     )
 
