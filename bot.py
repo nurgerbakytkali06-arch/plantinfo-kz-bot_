@@ -12,7 +12,9 @@ from aiogram.types import (
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     Message,
+    ReplyKeyboardMarkup,
 )
 from dotenv import load_dotenv
 
@@ -65,6 +67,16 @@ TEXT = {
     "no_latin": "Бұл өсімдік бойынша латынша атау бастапқы материалда нақты көрсетілмеген.",
     "no_image": "Бұл өсімдікке сурет табылмады.",
 }
+
+# Telegram чатында әрқашан көрініп тұратын негізгі батырма.
+# Пайдаланушы /start жазбай-ақ ботты осы батырмамен қайта бастай алады.
+START_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🌿 Ботты бастау")]
+    ],
+    resize_keyboard=True,
+    is_persistent=True,
+)
 
 # Әр чатта бот жіберген соңғы хабарламалардың ID-лерін сақтаймыз.
 # Навигация кезінде сол хабарламалар өшіріліп, чат шашылмайды.
@@ -275,7 +287,25 @@ async def start(message: Message):
         parse_mode="HTML",
         reply_markup=main_menu(),
     )
+    # Негізгі reply-кнопка чаттың төменгі жағында тұрақты қалады.
+    await message.answer("Ботты қайта бастау үшін төмендегі батырманы басыңыз.", reply_markup=START_KEYBOARD)
     remember(message.chat.id, msg.message_id)
+
+
+@dp.message(F.text == "🌿 Ботты бастау")
+async def start_button(message: Message):
+    await clear_chat(message.bot, message.chat.id)
+    msg = await message.answer(
+        f"{TEXT['welcome']}\n\nСәлем! Ботқа қош келдіңіз.",
+        parse_mode="HTML",
+        reply_markup=main_menu(),
+    )
+    remember(message.chat.id, msg.message_id)
+    # Reply keyboard-ді қайта көрсетіп қоямыз.
+    await message.answer(
+        "Ботты қайта бастау үшін төмендегі батырманы басыңыз.",
+        reply_markup=START_KEYBOARD,
+    )
 
 
 @dp.callback_query(F.data == "menu")
