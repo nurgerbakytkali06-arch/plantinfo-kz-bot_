@@ -87,16 +87,7 @@ def category_keyboard(category: str):
 
 def plant_text(plant_id: int):
     plant = PLANT_BY_ID[plant_id]
-    name = plant["name_kk"]
-    body = plant.get("description_kk", "").strip()
-
-    if not body:
-        body = TEXT["no_text"]
-
-    return (
-        f"🌿 <b>{plant_id}. {name}</b>\n\n"
-        f"{body}\n\n"
-            )
+    return f"🌿 <b>{plant_id}. {plant['name_kk']}</b>"
 
 def chunks(text: str, limit: int = 3900):
     while len(text) > limit:
@@ -133,13 +124,12 @@ async def send_plant(bot: Bot, chat_id: int, plant_id: int):
 
     await bot.send_message(
         chat_id,
-        TEXT["menu_back"],
+        "Қажетті бөлімді таңдаңыз:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔤 Ғылыми атауы (Латынша атауы)", callback_data=f"latin:{plant_id}")],
             [InlineKeyboardButton(text="🖼 Суретті көру", callback_data=f"image:{plant_id}")],
             [InlineKeyboardButton(text="🌱 Өсімдік сипаттамасы", callback_data=f"desc:{plant_id}")],
-            [InlineKeyboardButton(text=TEXT["plants"], callback_data="plants")],
-            [InlineKeyboardButton(text=TEXT["back"], callback_data="menu")],
+            [InlineKeyboardButton(text="🔙 Артқа", callback_data="plants")],
         ]),
     )
 
