@@ -1,18 +1,24 @@
 import asyncio
+import html
 import json
 import os
-from pathlib import Path
 from contextlib import suppress
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, FSInputFile
+from aiogram.types import (
+    CallbackQuery,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-AUTHOR = os.getenv("BOT_AUTHOR", "ХБ-31").strip()
 PORT = int(os.getenv("PORT", "10000"))
 
 BASE = Path(__file__).resolve().parent
@@ -35,8 +41,8 @@ CATEGORIES = {
 }
 
 TEXT = {
-    "welcome": "🌿 Өсімдіктер энциклопедиясы",
-    "menu": "🌿 Өсімдіктер энциклопедиясы\n\nҚажетті бөлімді таңдаңыз:",
+    "welcome": "🌿 <b>Өсімдіктер энциклопедиясы</b>",
+    "menu": "🌿 <b>Өсімдіктер энциклопедиясы</b>\n\nҚажетті бөлімді таңдаңыз:",
     "plants": "🌱 Өсімдіктер",
     "trees": "🌳 Ағаштар мен бұталар",
     "flowers": "🌸 Гүлді және шөптесін өсімдіктер",
@@ -45,14 +51,25 @@ TEXT = {
     "search": "🔎 Іздеу",
     "about": "ℹ️ Бот туралы",
     "back": "🔙 Артқа",
-    "menu_back": "🏠 Негізгі мәзір",
-    "search_help": "🔎 Өсімдіктің қазақша немесе латынша атауын жазыңыз:\nМысалы: Қарағайлы шырша",
-    "not_found": "Өсімдік табылмады.",
-    "about_text": "Бұл бот берілген оқу материалдары негізінде 115 өсімдік туралы ақпаратты қарауға арналған.",
-    "source": "Дереккөз: ұсынылған оқу материалдары.",
-    "no_text": "Бұл түр бойынша бастапқы материалда толық сипаттама мәтіні берілмеген.",
+    "menu": "🏠 Негізгі мәзір",
     "choose_plant": "Өсімдікті таңдаңыз:",
+    "search_help": "🔎 Өсімдіктің қазақша немесе латынша атауын жазыңыз:",
+    "not_found": "Өсімдік табылмады.",
+    "about_text": (
+        "🌿 <b>Бот туралы</b>\n\n"
+        "Бұл бот берілген оқу материалдары негізінде "
+        "115 өсімдік туралы ақпаратты қарауға арналған."
+    ),
+    "source": "📚 Дереккөз: ұсынылған оқу материалдары.",
+    "no_text": "Бұл өсімдік бойынша сипаттама бастапқы материалда көрсетілмеген.",
+    "no_latin": "Бұл өсімдік бойынша латынша атау бастапқы материалда нақты көрсетілмеген.",
+    "no_image": "Бұл өсімдікке сурет табылмады.",
 }
+
+# Әр чатта бот жіберген соңғы хабарламалардың ID-лерін сақтаймыз.
+# Навигация кезінде сол хабарламалар өшіріліп, чат шашылмайды.
+CHAT_MESSAGES: dict[int, list[int]] = {}
+
 
 def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -61,14 +78,16 @@ def main_menu():
         [InlineKeyboardButton(text=TEXT["about"], callback_data="about")],
     ])
 
+
 def category_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=TEXT["trees"], callback_data="cat:trees")],
         [InlineKeyboardButton(text=TEXT["flowers"], callback_data="cat:flowers")],
         [InlineKeyboardButton(text=TEXT["field"], callback_data="cat:field")],
         [InlineKeyboardButton(text=TEXT["lower"], callback_data="cat:lower")],
-        [InlineKeyboardButton(text=TEXT["back"], callback_data="menu")],
+        [InlineKeyboardButton(text=TEXT["menu"], callback_data="menu")],
     ])
+
 
 def category_keyboard(category: str):
     rows = []
@@ -76,87 +95,184 @@ def category_keyboard(category: str):
         p = PLANT_BY_ID[pid]
         rows.append([
             InlineKeyboardButton(
-                text=p["name_kk"][:50],
-                callback_data=f"plant:{pid}"
+                text=f"{pid}. {p['name_kk']}"[:60],
+                callback_data=f"plant:{pid}",
             )
         ])
+
     rows.append([
         InlineKeyboardButton(text=TEXT["back"], callback_data="plants")
     ])
+    rows.append([
+        InlineKeyboardButton(text=TEXT["menu"], callback_data="menu")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
-def plant_text(plant_id: int):
-    plant = PLANT_BY_ID[plant_id]
-    return f"🌿 <b>{plant_id}. {plant['name_kk']}</b>"
 
-def chunks(text: str, limit: int = 3900):
-    while len(text) > limit:
-        cut = text.rfind("\n", 0, limit)
-        if cut < 500:
-            cut = limit
-        yield text[:cut]
-        text = text[cut:].lstrip()
-    if text:
-        yield text
+def plant_keyboard(plant_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔤 Ғылыми атауы (Латынша атауы)",
+            callback_data=f"latin:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🖼 Суретті көру",
+            callback_data=f"image:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🌱 Өсімдік сипаттамасы",
+            callback_data=f"desc:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🔙 Артқа",
+            callback_data="plants"
+        )],
+        [InlineKeyboardButton(
+            text=TEXT["menu"],
+            callback_data="menu"
+        )],
+    ])
+
+
+def detail_keyboard(plant_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔤 Ғылыми атауы",
+            callback_data=f"latin:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🖼 Суретті көру",
+            callback_data=f"image:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🌱 Өсімдік сипаттамасы",
+            callback_data=f"desc:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🔙 Артқа",
+            callback_data=f"plant:{plant_id}"
+        )],
+        [InlineKeyboardButton(
+            text="🌱 Өсімдіктер",
+            callback_data="plants"
+        )],
+        [InlineKeyboardButton(
+            text=TEXT["menu"],
+            callback_data="menu"
+        )],
+    ])
+
+
+def plant_title(plant_id: int):
+    plant = PLANT_BY_ID[plant_id]
+    return f"🌿 <b>{plant_id}. {html.escape(plant['name_kk'])}</b>"
+
+
+def description_text(plant_id: int):
+    plant = PLANT_BY_ID[plant_id]
+    name = html.escape(plant["name_kk"])
+    text = plant.get("description_kk", "").strip() or TEXT["no_text"]
+    return f"🌱 <b>{name}</b>\n\n{html.escape(text)}\n\n{TEXT['source']}"
+
+
+def latin_text(plant_id: int):
+    plant = PLANT_BY_ID[plant_id]
+    name = html.escape(plant["name_kk"])
+    latin = html.escape(str(plant.get("latin_name") or "").strip())
+
+    if latin:
+        return f"🔤 <b>{name}</b>\n\n<i>{latin}</i>"
+    return f"🔤 <b>{name}</b>\n\n{TEXT['no_latin']}"
+
 
 def image_for(plant_id: int):
     stem = f"plant_{plant_id:03d}"
-    matches = list(IMAGE_DIR.glob(stem + ".*"))
+    matches = sorted(IMAGE_DIR.glob(stem + ".*"))
     return matches[0] if matches else None
 
-async def send_plant(bot: Bot, chat_id: int, plant_id: int):
-    # Өсімдік ашылғанда сурет көрсетілмейді.
-    # Тек атауы және қажетті төрт батырма көрсетіледі.
-    await bot.send_message(
+
+async def clear_chat(bot: Bot, chat_id: int):
+    """Боттың осы чатта өзі жіберген алдыңғы хабарламаларын өшіреді."""
+    ids = CHAT_MESSAGES.get(chat_id, [])
+    if not ids:
+        return
+
+    for message_id in ids:
+        with suppress(Exception):
+            await bot.delete_message(chat_id, message_id)
+
+    CHAT_MESSAGES[chat_id] = []
+
+
+def remember(chat_id: int, message_id: int):
+    CHAT_MESSAGES.setdefault(chat_id, []).append(message_id)
+
+
+async def send_clean(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    reply_markup=None,
+):
+    await clear_chat(bot, chat_id)
+    msg = await bot.send_message(
         chat_id,
-        plant_text(plant_id),
+        text,
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="🔤 Ғылыми атауы (Латынша атауы)",
-                callback_data=f"latin:{plant_id}"
-            )],
-            [InlineKeyboardButton(
-                text="🖼 Суретті көру",
-                callback_data=f"image:{plant_id}"
-            )],
-            [InlineKeyboardButton(
-                text="🌱 Өсімдік сипаттамасы",
-                callback_data=f"desc:{plant_id}"
-            )],
-            [InlineKeyboardButton(
-                text="🔙 Артқа",
-                callback_data="plants"
-            )],
-        ]),
+        reply_markup=reply_markup,
     )
+    remember(chat_id, msg.message_id)
+    return msg
+
+
+async def send_clean_photo(
+    bot: Bot,
+    chat_id: int,
+    image_path: Path,
+    caption: str,
+    reply_markup=None,
+):
+    await clear_chat(bot, chat_id)
+    msg = await bot.send_photo(
+        chat_id,
+        FSInputFile(image_path),
+        caption=caption,
+        parse_mode="HTML",
+        reply_markup=reply_markup,
+    )
+    remember(chat_id, msg.message_id)
+    return msg
+
 
 dp = Dispatcher()
 
+
 @dp.message(CommandStart())
 async def start(message: Message):
-    await message.answer(
-        f"{TEXT['welcome']}\n\n"
-        f"Сәлем! Ботқа қош келдіңіз.\n\n"
-        f"{TEXT['menu']}",
+    # /start басылса, бот өзінің бұрынғы хабарламаларын тазалап,
+    # бірден негізгі мәзірден бастайды.
+    await clear_chat(message.bot, message.chat.id)
+
+    msg = await message.answer(
+        f"{TEXT['welcome']}\n\nСәлем! Ботқа қош келдіңіз.",
+        parse_mode="HTML",
         reply_markup=main_menu(),
     )
+    remember(message.chat.id, msg.message_id)
+
 
 @dp.callback_query(F.data == "menu")
 async def cb_menu(call: CallbackQuery):
-    await call.message.edit_text(
-        TEXT["menu"],
-        reply_markup=main_menu()
-    )
+    await send_clean(call.bot, call.message.chat.id, TEXT["menu"], main_menu())
     await call.answer()
+
 
 @dp.callback_query(F.data == "plants")
 async def cb_plants(call: CallbackQuery):
-    await call.message.edit_text(
-        f"🌱 {TEXT['plants']}\n\n{TEXT['choose_plant']}",
-        reply_markup=category_menu()
-    )
+    text = f"🌱 <b>{TEXT['plants']}</b>\n\n{TEXT['choose_plant']}"
+    await send_clean(call.bot, call.message.chat.id, text, category_menu())
     await call.answer()
+
 
 @dp.callback_query(F.data.startswith("cat:"))
 async def cb_category(call: CallbackQuery):
@@ -166,98 +282,160 @@ async def cb_category(call: CallbackQuery):
         await call.answer()
         return
 
-    await call.message.edit_text(
-        f"{TEXT[cat]}\n\n{TEXT['choose_plant']}",
-        reply_markup=category_keyboard(cat)
+    text = f"{TEXT[cat]}\n\n{TEXT['choose_plant']}"
+    await send_clean(
+        call.bot,
+        call.message.chat.id,
+        text,
+        category_keyboard(cat),
     )
     await call.answer()
+
 
 @dp.callback_query(F.data.startswith("plant:"))
 async def cb_plant(call: CallbackQuery):
     try:
         pid = int(call.data.split(":", 1)[1])
-    except ValueError:
+    except (ValueError, IndexError):
         await call.answer()
         return
 
-    if pid in PLANT_BY_ID:
-        await send_plant(call.bot, call.from_user.id, pid)
+    if pid not in PLANT_BY_ID:
+        await call.answer("Өсімдік табылмады.", show_alert=True)
+        return
 
+    await send_clean(
+        call.bot,
+        call.message.chat.id,
+        plant_title(pid),
+        plant_keyboard(pid),
+    )
     await call.answer()
 
-@dp.callback_query(F.data.startswith("desc:"))
-async def cb_description(call: CallbackQuery):
-    try:
-        pid = int(call.data.split(":", 1)[1])
-    except ValueError:
-        await call.answer()
-        return
-
-    plant = PLANT_BY_ID.get(pid)
-    if not plant:
-        await call.answer()
-        return
-
-    text = plant.get("description_kk", "").strip() or TEXT["no_text"]
-    parts = list(chunks(f"🌱 <b>{plant['name_kk']}</b>\n\n{text}"))
-    for part in parts:
-        await call.message.answer(part, parse_mode="HTML")
-    await call.answer()
 
 @dp.callback_query(F.data.startswith("latin:"))
 async def cb_latin(call: CallbackQuery):
     try:
         pid = int(call.data.split(":", 1)[1])
-    except ValueError:
+    except (ValueError, IndexError):
         await call.answer()
         return
 
-    plant = PLANT_BY_ID.get(pid)
-    if not plant:
+    if pid not in PLANT_BY_ID:
         await call.answer()
         return
 
-    latin = plant.get("latin_name")
-    if latin:
-        await call.message.answer(f"🔤 <b>Латынша атауы:</b> <i>{latin}</i>", parse_mode="HTML")
-    else:
-        await call.message.answer("🔤 Бұл өсімдік бойынша латынша атау бастапқы материалда нақты көрсетілмеген.")
+    await send_clean(
+        call.bot,
+        call.message.chat.id,
+        latin_text(pid),
+        detail_keyboard(pid),
+    )
     await call.answer()
+
+
+@dp.callback_query(F.data.startswith("desc:"))
+async def cb_description(call: CallbackQuery):
+    try:
+        pid = int(call.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await call.answer()
+        return
+
+    if pid not in PLANT_BY_ID:
+        await call.answer()
+        return
+
+    text = description_text(pid)
+
+    # Telegram бір хабарламаға 4096 таңбаға дейін қабылдайды.
+    # Сипаттама ұзын болса, бірнеше бөлікке бөлінеді.
+    # Олардың барлығы CHAT_MESSAGES арқылы кейін тазаланады.
+    await clear_chat(call.bot, call.message.chat.id)
+
+    limit = 4000
+    parts = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit)
+        if cut < 1000:
+            cut = limit
+        parts.append(text[:cut])
+        text = text[cut:].lstrip()
+    parts.append(text)
+
+    for i, part in enumerate(parts):
+        markup = detail_keyboard(pid) if i == len(parts) - 1 else None
+        msg = await call.bot.send_message(
+            call.message.chat.id,
+            part,
+            parse_mode="HTML",
+            reply_markup=markup,
+        )
+        remember(call.message.chat.id, msg.message_id)
+
+    await call.answer()
+
 
 @dp.callback_query(F.data.startswith("image:"))
 async def cb_image(call: CallbackQuery):
     try:
         pid = int(call.data.split(":", 1)[1])
-    except ValueError:
+    except (ValueError, IndexError):
+        await call.answer()
+        return
+
+    if pid not in PLANT_BY_ID:
         await call.answer()
         return
 
     img = image_for(pid)
-    if img:
-        await call.message.answer_photo(FSInputFile(img), caption=f"🖼 {PLANT_BY_ID[pid]['name_kk']}")
-    else:
-        await call.message.answer("Бұл өсімдікке сурет табылмады.")
+
+    if not img:
+        await send_clean(
+            call.bot,
+            call.message.chat.id,
+            TEXT["no_image"],
+            detail_keyboard(pid),
+        )
+        await call.answer()
+        return
+
+    name = html.escape(PLANT_BY_ID[pid]["name_kk"])
+    await send_clean_photo(
+        call.bot,
+        call.message.chat.id,
+        img,
+        f"🖼 <b>{name}</b>",
+        detail_keyboard(pid),
+    )
     await call.answer()
+
 
 @dp.callback_query(F.data == "search")
 async def cb_search(call: CallbackQuery):
-    await call.message.edit_text(
+    await send_clean(
+        call.bot,
+        call.message.chat.id,
         TEXT["search_help"],
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=TEXT["back"], callback_data="menu")]
+        InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=TEXT["back"], callback_data="menu")],
         ]),
     )
     await call.answer()
 
+
 @dp.callback_query(F.data == "about")
 async def cb_about(call: CallbackQuery):
-    await call.message.edit_text(
+    await send_clean(
+        call.bot,
+        call.message.chat.id,
         TEXT["about_text"],
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=TEXT["back"], callback_data="menu")]
+        InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=TEXT["back"], callback_data="menu")],
         ]),
     )
     await call.answer()
+
 
 @dp.message(F.text)
 async def search_message(message: Message):
@@ -267,48 +445,51 @@ async def search_message(message: Message):
     q = message.text.strip().casefold()
 
     if len(q) < 2:
-        await message.answer(TEXT["not_found"])
         return
 
     results = []
 
     for p in PLANTS:
         name = p.get("name_kk", "")
+        latin = p.get("latin_name", "")
         source = p.get("description_kk", "")
 
-        hay = [
-            name.casefold(),
-            source.casefold(),
-        ]
-
-        if any(q in s for s in hay):
+        if any(
+            q in value.casefold()
+            for value in (name, latin, source)
+            if isinstance(value, str)
+        ):
             results.append(p)
 
     if not results:
-        await message.answer(
+        await send_clean(
+            message.bot,
+            message.chat.id,
             TEXT["not_found"],
-            reply_markup=main_menu()
+            main_menu(),
         )
         return
 
     rows = []
-
     for p in results[:30]:
         rows.append([
             InlineKeyboardButton(
-                text=f"{p['id']}. {p['name_kk'][:48]}",
-                callback_data=f"plant:{p['id']}"
+                text=f"{p['id']}. {p['name_kk']}"[:60],
+                callback_data=f"plant:{p['id']}",
             )
         ])
 
     rows.append([
-        InlineKeyboardButton(text=TEXT["back"], callback_data="menu")
+        InlineKeyboardButton(text=TEXT["menu"], callback_data="menu")
     ])
 
-    await message.answer(
-        "🔎 Нәтижелер:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    await send_clean(
+        message.bot,
+        message.chat.id,
+        f"🔎 <b>Нәтижелер:</b> {len(results)}",
+        InlineKeyboardMarkup(inline_keyboard=rows),
     )
+
 
 async def health_server():
     from aiohttp import web
@@ -332,16 +513,18 @@ async def health_server():
     finally:
         await runner.cleanup()
 
+
 async def main():
     bot = Bot(BOT_TOKEN)
 
     try:
         await asyncio.gather(
             dp.start_polling(bot),
-            health_server()
+            health_server(),
         )
     finally:
         await bot.session.close()
+
 
 if __name__ == "__main__":
     with suppress(KeyboardInterrupt):
