@@ -7,7 +7,7 @@ from contextlib import suppress
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, FSInputFile
 from dotenv import load_dotenv
 
 try:
@@ -238,9 +238,13 @@ async def send_plant(bot: Bot, chat_id: int, plant_id: int, lang: str):
     text = plant_text(plant_id, lang)
     parts = list(chunks(text))
     img = image_for(plant_id)
-    if img:
-        with img.open("rb") as f:
-            await bot.send_photo(chat_id, f, caption=parts[0][:1024], parse_mode="HTML")
+  if img:
+    await bot.send_photo(
+        chat_id,
+        FSInputFile(img),
+        caption=parts[0][:1024],
+        parse_mode="HTML"
+    )
         for part in parts[1:]:
             await bot.send_message(chat_id, part, parse_mode="HTML")
     else:
