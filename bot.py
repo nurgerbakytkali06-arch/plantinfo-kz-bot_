@@ -15,6 +15,7 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    Update,
 )
 from dotenv import load_dotenv
 
@@ -573,86 +574,75 @@ async def search_message(message: Message):
     )
 
 
-async def webhook_server(bot: Bot):
-    """Render үшін webhook сервері. Polling қолданбайды."""
+async def health_server():
     from aiohttp import web
-    from aiogram.types import Update
 
     app = web.Application()
 
     async def health(_request):
         return web.Response(text="OK")
 
-    async def telegram_webhook(request):
+    async def webhook(request):
+        secret = os.getenv("WEBHOOK_SECRET", "").strip()
+        if secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != secret:
+            return web.Response(status=403, text="Forbidden")
+
         try:
             data = await request.json()
             update = Update.model_validate(data)
-            await dp.feed_update(bot, update)
-            return web.Response(text="OK")
-        except Exception as exc:
-            # Telegram қате жауап алса, update-ті кейін қайта жіберуі мүмкін.
-            print(f"Webhook error: {type(exc).__name__}: {exc}", flush=True)
-            return web.Response(status=500, text="Webhook error")
 
+            async def process_update():
+                try:
+                    await dp.feed_update(request.app["bot"], update)
+                except Exception as e:
+                    print(f"Update processing error: {e}")
+
+            asyncio.create_task(process_update())
+            return web.Response(text="OK")
+        except Exception as e:
+            print(f"Webhook error: {e}")
+            return web.Response(status=400, text="Bad Request")
+
+    from aiogram.client.session.aiohttp import AiohttpSession
+
+    session = AiohttpSession()
+    app["bot"] = Bot(BOT_TOKEN, session=session)
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
-    app.router.add_post("/webhook", telegram_webhook)
+    app.router.add_post("/webhook", webhook)
 
     runner = web.AppRunner(app)
     await runner.setup()
+
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-    public_url = (
-        os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
-        or os.getenv("PUBLIC_URL", "").strip().rstrip("/")
-    )
-    if not public_url:
+    external_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if not external_url:
         raise RuntimeError(
-            "RENDER_EXTERNAL_URL немесе PUBLIC_URL орнатылмаған. "
-            "Render-де RENDER_EXTERNAL_URL автоматты түрде берілуі керек."
+            "RENDER_EXTERNAL_URL Render ортасында автоматты түрде берілуі керек."
         )
 
-    webhook_url = f"{public_url}/webhook"
-
-    # Render қайта іске қосылғанда webhook-ті қайта орнатады.
-    # Уақытша Telegram/желілік қате болса, бірнеше рет қайталайды.
-    for attempt in range(1, 6):
-        try:
-            await bot.set_webhook(
-                url=webhook_url,
-                allowed_updates=dp.resolve_used_update_types(),
-            )
-            info = await bot.get_webhook_info()
-            print(
-                f"Webhook active: {info.url} | pending={info.pending_update_count}",
-                flush=True,
-            )
-            break
-        except Exception as exc:
-            print(
-                f"Webhook setup attempt {attempt}/5 failed: "
-                f"{type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            if attempt == 5:
-                raise
-            await asyncio.sleep(attempt * 3)
+    webhook_url = f"{external_url}/webhook"
 
     try:
+        await app["bot"].set_webhook(
+            url=webhook_url,
+            drop_pending_updates=False,
+        )
+        print(f"Webhook active: {webhook_url}")
         await asyncio.Event().wait()
     finally:
-        # Webhook-ті shutdown кезінде өшірмейміз: Render restart кезінде
-        # Telegram ескі endpoint-ті сақтап, қайта қосылғанда update жібере алады.
+        await app["bot"].session.close()
         await runner.cleanup()
 
 
 async def main():
-    bot = Bot(BOT_TOKEN)
     try:
-        await webhook_server(bot)
-    finally:
-        await bot.session.close()
+        await health_server()
+    except Exception as e:
+        print(f"FATAL ERROR: {e}")
+        raise
 
 
 if __name__ == "__main__":
